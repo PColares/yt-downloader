@@ -29,27 +29,40 @@ const downloadTitle = ref('');
 
 const downloadVideo = async () => {
   try {
+    const videoTitle = await getVideoTitle(videoUrl.value);
+
     const response = await axios.post('http://127.0.0.1:5000/download', {
       url: videoUrl.value,
       format: videoFormat.value
-    }, { responseType: 'blob'});
-    console.log('response', response)
-    const videoTitle = response.headers['last-modified'];
-    const blob = new Blob([response.data], { type: response.headers['content-type']});
+    }, { responseType: 'blob' });
 
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = videoTitle.value;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const fileURL = window.URL.createObjectURL(new Blob([response.data]));
+    const fileLink = document.createElement('a');
 
-    toast.success('Download successful!');
-    console.log('videoTitle', videoTitle)
+    fileLink.href = fileURL;
+    fileLink.setAttribute('download', videoTitle + (videoFormat.value === 'mp3' ? '.mp3' : '.mp4'));
+
+    document.body.appendChild(fileLink);
+    fileLink.click();
+    document.body.removeChild(fileLink);
+
+    toast.success('Download concluído com sucesso!');
   } catch (error) {
     console.error('Erro ao baixar vídeo:', error);
     toast.error('Erro ao baixar vídeo. Tente novamente.');
+  }
+};
+
+const getVideoTitle = async (url) => {
+  try {
+    const response = await axios.get('http://127.0.0.1:5000/video-info', {
+      params: { url }
+    });
+    return response.data.title;
+  } catch (error) {
+    console.error('Erro ao obter título do vídeo:', error);
+    toast.error('Erro ao obter título do vídeo. Tente novamente.');
+    return 'video';
   }
 };
 </script>
