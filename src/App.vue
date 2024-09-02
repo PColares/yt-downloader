@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <h1 class="text-orange-500 mb-4">Magnífico seja!</h1>
-    <p>https://www.youtube.com/watch?v=_RtbGoaeJUQ</p>
+    <p>https://www.youtube.com/watch?v=CCKf6O7asss</p>
     <h1>BaixaTube</h1>
     <form @submit.prevent="downloadVideo" class="flex flex-col justify-center items-center gap-4 mt-12">
       <div class="flex gap-4">
@@ -13,7 +13,7 @@
       </div>
       <button type="submit">Baixar</button>
     </form>
-    <a v-if="downloadLink" :href="downloadLink" :download="downloadTitle">Clique aqui para baixar o vídeo</a>
+    <!-- <a v-if="downloadLink" :href="downloadLink" :download="downloadTitle">Clique aqui para baixar o vídeo</a> -->
   </div>
 </template>
 
@@ -22,23 +22,31 @@ import { ref } from 'vue';
 import axios from 'axios';
 import { toast } from 'vue3-toastify';
 
-const videoUrl = ref('');
+const videoUrl = ref('https://www.youtube.com/watch?v=CCKf6O7asss');
 const videoFormat = ref('mp4');
 const downloadLink = ref('');
 const downloadTitle = ref('');
 
 const downloadVideo = async () => {
   try {
-    const response = await axios.post('http://localhost:5000/download', {
+    const response = await axios.post('http://127.0.0.1:5000/download', {
       url: videoUrl.value,
       format: videoFormat.value
-    });
+    }, { responseType: 'blob'});
+    console.log('response', response)
+    const videoTitle = response.headers['last-modified'];
+    const blob = new Blob([response.data], { type: response.headers['content-type']});
 
-    if (response.data.download_url) {
-      downloadLink.value = response.data.download_url;
-      downloadTitle.value = response.data.title + (videoFormat.value === 'mp3' ? '.mp3' : '.mp4');
-      toast.success('Download concluído com sucesso!');
-    }
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = videoTitle.value;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast.success('Download successful!');
+    console.log('videoTitle', videoTitle)
   } catch (error) {
     console.error('Erro ao baixar vídeo:', error);
     toast.error('Erro ao baixar vídeo. Tente novamente.');

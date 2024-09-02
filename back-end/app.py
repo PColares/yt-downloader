@@ -1,25 +1,10 @@
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, jsonify, send_file, make_response
+from flask_cors import CORS
 import yt_dlp
 import os
-import re
 
 app = Flask(__name__)
-
-def clean_filename(filename):
-    return re.sub(r'[<>:"/\\|?*]', '', filename)
-
-def get_unique_filename(filename):
-    base, ext = os.path.splitext(filename)
-    counter = 1
-    new_filename = filename
-    while os.path.exists(new_filename):
-        new_filename = f"{base} ({counter}){ext}"
-        counter += 1
-    return new_filename
-
-OUTPUT_DIR = 'downloads'
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
+CORS(app)
 @app.route('/download', methods=['POST'])
 def download_video():
     data = request.json
@@ -27,40 +12,67 @@ def download_video():
     format = data.get('format', 'mp4')
 
     if not url:
-        return jsonify({"error": "URL is required"}), 400
+        return jsonify({'error': 'URL is required'}), 400
+
     if format not in ['mp4', 'mp3']:
-        return jsonify({"error": "Invalid format. Supported formats: mp4, mp3"}), 400
+        return jsonify({'error': 'Invalid format. Only "mp4" or "mp3" is allowed.'}), 400
+
+    download_folder = 'downloads'
+    if not os.path.exists(download_folder):
+        os.makedirs(download_folder)
+
+    # ydl_opts = {
+    #     'outtmpl': os.path.join(download_folder, '%(title)s.%(ext)s'),
+    #     'format': 'bestaudio/best' if format == 'mp3' else 'bestvideo+bestaudio/best',
+    #     'postprocessors': [{
+    #         'key': 'FFmpegExtractAudio',
+    #         'preferredcodec': 'mp3',
+    #         'preferredquality': '192',
+    #     }] if format == 'mp3' else [],
+    #     'quiet': True,
+    # }
+    ydl_opts = {
+        'outtmpl': os.path.join(download_folder, '%(title)s.%(ext)s'),
+        'format': 'bestvideo+bestaudio/best' if format == 'mp4' else 'bestaudio/best',
+        'merge_output_format': 'mp4' if format == 'mp4' else None,
+        'postprocessors': [{
+            'key': 'FFmpegVideoConvertor',
+            'preferedformat': 'mp4',
+        }] if format == 'mp4' else [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+        'quiet': True,
+    }
+
+    def remove_file(file_url):
+        try:
+            os.remove(file_url)
+        except OSError as e:
+            print(f"Error: {file_url} : {e.strerror}")
 
     try:
-        ydl_opts_info = {
-            'quiet': True,
-            'no_warnings': True,
-            'skip_download': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
-            info_dict = ydl.extract_info(url, download=False)
-            title = info_dict.get('title', 'video')
-            filename = f"{clean_filename(title)}.mp3" if format == 'mp3' else f"{clean_filename(title)}.mp4"
-            unique_filename = get_unique_filename(os.path.join(OUTPUT_DIR, filename))
-
-        ydl_opts_download = {
-            'format': 'bestaudio/best' if format == 'mp3' else 'best',
-            'outtmpl': unique_filename,
-            'ffmpeg_location': 'path_to_ffmpeg',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192'
-            }] if format == 'mp3' else [],
-            'postprocessor_args': ['-ar', '16000'] if format == 'mp3' else [],
-        }
-        with yt_dlp.YoutubeDL(ydl_opts_download) as ydl:
-            ydl.download([url])
-
-        return send_file(unique_filename, as_attachment=True, download_name=filename)
-
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_url = os.path.join(download_folder, f"{info_dict['title']}.{format}")
+            # return jsonify({
+            #     'message': 'Download successful',
+            #     'title': info_dict['title'],
+            #     'file_url': file_url
+            # }), 200
+            # return send_file(file_url, as_attachment=True, download_name=f"{info_dict['title']}.{format}")
+            response = make_response(send_file(file_url, as_attachment=True))
+            response.headers['x-video-title'] = info_dict['title']
+            return response
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Download error: {e}")
+        return jsonify({'error': 'Failed to download video'}), 500
+    # finally:
+    #     os.remove(file_url)
+
+
+
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)
